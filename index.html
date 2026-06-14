@@ -154,7 +154,7 @@ input[type=number]:focus,input[type=text]:focus{border-color:var(--accent);box-s
 
 <script>
 // ── STORAGE ──────────────────────────────────────────
-const SK={dias:'pf_dias',cfg:'pf_cfg',gastos:'pf_gastos'};
+const SK={dias:'pf2_dias',cfg:'pf2_cfg',gastos:'pf2_gastos'};
 function salvar(){try{localStorage.setItem(SK.dias,JSON.stringify(dias));localStorage.setItem(SK.cfg,JSON.stringify(cfg));localStorage.setItem(SK.gastos,JSON.stringify(gastos));}catch(e){}}
 function carregar(){
   try{
