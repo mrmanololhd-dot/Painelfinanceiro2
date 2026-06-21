@@ -121,6 +121,19 @@ input[type=number]:focus,input[type=text]:focus{border-color:var(--accent);box-s
 .gastos-row input{padding:6px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);outline:none;font-family:inherit}
 .gastos-row input:first-child{text-align:left}
 .gastos-row input:nth-child(2){text-align:right;width:130px}
+.month-selector{display:flex;align-items:center;gap:8px;background:var(--bg2);border-radius:var(--radius);padding:4px;border:0.5px solid var(--border)}
+.month-nav-btn{width:28px;height:28px;border:none;background:none;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:14px}
+.month-nav-btn:hover{background:var(--bg)}
+.month-select{border:none;background:none;font-size:13px;font-weight:600;color:var(--text);outline:none;cursor:pointer;padding:4px 6px;text-align:center}
+.rank-list{display:flex;flex-direction:column;gap:6px}
+.rank-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);background:var(--bg2)}
+.rank-pos{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.rank-pos.g{background:var(--green-bg);color:var(--green)}
+.rank-pos.r{background:var(--red-bg);color:var(--red)}
+.rank-label{flex:1;font-size:12.5px;color:var(--text)}
+.rank-val{font-size:12.5px;font-weight:600;color:var(--text)}
+.trend-up{color:var(--green)}.trend-down{color:var(--red)}.trend-flat{color:var(--text2)}
+.trend-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
 </style>
 </head>
 <body>
@@ -133,12 +146,18 @@ input[type=number]:focus,input[type=text]:focus{border-color:var(--accent);box-s
         <div class="header-sub" id="headerSub">Mês atual · Nenhum dado lançado</div>
       </div>
     </div>
+    <div class="month-selector">
+      <button class="month-nav-btn" onclick="mudarMes(-1)" aria-label="Mês anterior"><i class="ti ti-chevron-left"></i></button>
+      <select class="month-select" id="monthSelect" onchange="selecionarMes(this.value)"></select>
+      <button class="month-nav-btn" onclick="mudarMes(1)" aria-label="Próximo mês"><i class="ti ti-chevron-right"></i></button>
+    </div>
   </div>
 
   <div class="nav">
     <button class="nav-btn active" onclick="show('dias',this)"><i class="ti ti-calendar"></i>Dias</button>
     <button class="nav-btn" onclick="show('semanas',this)"><i class="ti ti-layout-columns"></i>Semanas</button>
     <button class="nav-btn" onclick="show('total',this)"><i class="ti ti-chart-bar"></i>Total</button>
+    <button class="nav-btn" onclick="show('analises',this)"><i class="ti ti-chart-dots"></i>Análises</button>
     <button class="nav-btn" onclick="show('simulacao',this)"><i class="ti ti-calculator"></i>Simulação</button>
     <button class="nav-btn" onclick="show('comissao',this)"><i class="ti ti-user"></i>Atendente</button>
     <button class="nav-btn" onclick="show('config',this)"><i class="ti ti-settings"></i>Config.</button>
@@ -147,31 +166,97 @@ input[type=number]:focus,input[type=text]:focus{border-color:var(--accent);box-s
   <div id="s-dias" class="section active"></div>
   <div id="s-semanas" class="section"></div>
   <div id="s-total" class="section"></div>
+  <div id="s-analises" class="section"></div>
   <div id="s-simulacao" class="section"></div>
   <div id="s-comissao" class="section"></div>
   <div id="s-config" class="section"></div>
 </div>
 
 <script>
+// ── MESES ────────────────────────────────────────────
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DIAS_NO_MES=[31,29,31,30,31,30,31,31,30,31,30,31]; // fevereiro com 29 pra cobrir bissexto
+function diasNoMes(m){return m===1?29:DIAS_NO_MES[m];}
+let mesAtual=5; // 0=Jan...11=Dez — default Junho (mês corrente na migração)
+
+function novoMesVazio(){return Array.from({length:31},(_,i)=>({dia:i+1,inv:0,fat:0,leads:0,vendas:0}));}
+
 // ── STORAGE ──────────────────────────────────────────
-const SK={dias:'pf2_dias',cfg:'pf2_cfg',gastos:'pf2_gastos'};
-function salvar(){try{localStorage.setItem(SK.dias,JSON.stringify(dias));localStorage.setItem(SK.cfg,JSON.stringify(cfg));localStorage.setItem(SK.gastos,JSON.stringify(gastos));}catch(e){}}
+const SK={meses:'pf3_meses',cfg:'pf3_cfg',gastos:'pf3_gastos',sim:'pf3_sim',mesAtual:'pf3_mesAtual'};
+const SK_OLD={dias:'pf2_dias',cfg:'pf2_cfg',gastos:'pf2_gastos',sim:'pf2_sim'};
+
+function salvar(){
+  try{
+    localStorage.setItem(SK.meses,JSON.stringify(dadosMeses));
+    localStorage.setItem(SK.cfg,JSON.stringify(cfg));
+    localStorage.setItem(SK.gastos,JSON.stringify(gastosPorMes));
+    localStorage.setItem(SK.sim,JSON.stringify(simState));
+    localStorage.setItem(SK.mesAtual,String(mesAtual));
+  }catch(e){}
+}
+
 function carregar(){
   try{
-    const d=localStorage.getItem(SK.dias),c=localStorage.getItem(SK.cfg),g=localStorage.getItem(SK.gastos);
-    if(d){const p=JSON.parse(d);if(Array.isArray(p))dias=p;}
+    const m=localStorage.getItem(SK.meses),c=localStorage.getItem(SK.cfg),
+          g=localStorage.getItem(SK.gastos),s=localStorage.getItem(SK.sim),
+          ma=localStorage.getItem(SK.mesAtual);
+    if(m){const p=JSON.parse(m);if(p&&typeof p==='object')dadosMeses=p;}
     if(c){const p=JSON.parse(c);if(p&&typeof p==='object')cfg=p;}
-    if(g){const p=JSON.parse(g);if(Array.isArray(p))gastos=p;}
+    if(g){const p=JSON.parse(g);if(p&&typeof p==='object')gastosPorMes=p;}
+    if(s){const p=JSON.parse(s);if(p&&typeof p==='object')simState=p;}
+    if(ma!==null)mesAtual=parseInt(ma)||5;
+
+    // Migração: se existirem dados do sistema antigo (mono-mês) e ainda não migrou
+    if(!m){
+      const dOld=localStorage.getItem(SK_OLD.dias);
+      if(dOld){
+        const p=JSON.parse(dOld);
+        if(Array.isArray(p)&&p.some(d=>d.fat>0||d.inv>0)){
+          dadosMeses[5]=p; // joga no mês de Junho (mês corrente na época da migração)
+          mesAtual=5;
+        }
+      }
+      const gOld=localStorage.getItem(SK_OLD.gastos);
+      if(gOld){const p=JSON.parse(gOld);if(Array.isArray(p)&&p.length)gastosPorMes[5]=p;}
+    }
   }catch(e){}
 }
 
 // ── ESTADO ───────────────────────────────────────────
 let cfg={fixo:800,commPct:5,frustPct:80,taxPct:13,niveis:[{meta:3000,bonus:50},{meta:4000,bonus:100},{meta:5000,bonus:200}]};
-let dias=Array.from({length:31},(_,i)=>({dia:i+1,inv:0,fat:0,leads:0,vendas:0}));
-let gastos=[];
+let dadosMeses={}; // {0: [...31 dias], 1: [...], ...}
+for(let i=0;i<12;i++) dadosMeses[i]=novoMesVazio();
+let gastosPorMes={};
+for(let i=0;i<12;i++) gastosPorMes[i]=[];
+let simState={ticket:190,vendas:14,cpa:60,cpc:4,diasMes:30,atend:1,txConv:10};
 let chartInst=null;
 
 carregar();
+
+// getters/setters de conveniência pro mês selecionado
+function getDias(){return dadosMeses[mesAtual];}
+function setDias(v){dadosMeses[mesAtual]=v;}
+Object.defineProperty(window,'dias',{get:getDias,set:setDias});
+function getGastos(){return gastosPorMes[mesAtual];}
+function setGastos(v){gastosPorMes[mesAtual]=v;}
+Object.defineProperty(window,'gastos',{get:getGastos,set:setGastos});
+
+function mudarMes(delta){
+  mesAtual=(mesAtual+delta+12)%12;
+  document.getElementById('monthSelect').value=mesAtual;
+  salvar();
+  refreshAll();
+}
+function selecionarMes(v){
+  mesAtual=parseInt(v);
+  salvar();
+  refreshAll();
+}
+function popularSeletorMeses(){
+  const sel=document.getElementById('monthSelect');
+  sel.innerHTML=MESES.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+  sel.value=mesAtual;
+}
 
 // ── HELPERS ──────────────────────────────────────────
 const brl=v=>'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -181,9 +266,10 @@ const getTax=()=>cfg.taxPct/100;
 const roiX=v=>v.toFixed(2)+'x';
 
 function bonusDia(fat){
-  const s=[...cfg.niveis].sort((a,b)=>b.meta-a.meta);
-  for(const n of s)if(fat>=n.meta)return n.bonus;
-  return 0;
+  // Bônus acumulado: soma o bônus de TODOS os níveis atingidos
+  let total=0;
+  for(const n of cfg.niveis) if(fat>=n.meta) total+=n.bonus;
+  return total;
 }
 
 function getStatus(fat){
@@ -249,11 +335,13 @@ function renderDias(){
     </div>
   </div>`;
 
-  const rows=dias.map(d=>{
+  const maxDias=diasNoMes(mesAtual);
+  const rows=dias.filter(d=>d.dia<=maxDias).map(d=>{
     const invT=d.inv*(1+getTax()),lucro=d.fat-invT,frust=d.fat*getFrust(),lucroF=frust-invT;
     const roi=d.inv>0?d.fat/(d.inv*(1+getTax())):null;
+    const dow=DIAS_SEMANA[diaDaSemana(mesAtual,d.dia)].slice(0,3);
     return`<tr>
-      <td style="font-weight:600;color:var(--text2);width:30px">${d.dia}</td>
+      <td style="font-weight:600;color:var(--text2);width:46px">${d.dia} <span style="font-weight:400;color:var(--text3);font-size:10px">${dow}</span></td>
       <td><input type="number" min="0" step="0.01" value="${d.inv||''}" placeholder="0,00" onchange="upd(${d.dia-1},'inv',this.value)"></td>
       <td><input type="number" min="0" step="0.01" value="${d.fat||''}" placeholder="0,00" onchange="upd(${d.dia-1},'fat',this.value)"></td>
       <td><input type="number" min="0" step="1" value="${d.leads||''}" placeholder="0" onchange="upd(${d.dia-1},'leads',this.value)"></td>
@@ -289,12 +377,43 @@ function calcSem(i){
 function renderSemanas(){
   const el=document.getElementById('s-semanas');
   const ranges=['1 a 7','8 a 14','15 a 21','22 a 31'];
-  el.innerHTML=Array.from({length:4},(_,i)=>{
-    const c=calcSem(i),h=c.fat>0||c.inv>0;
+  const todasSemanas=Array.from({length:4},(_,i)=>calcSem(i));
+  const semanasComDados=todasSemanas.map((c,i)=>({...c,idx:i})).filter(c=>c.roiFat!==null);
+  let melhorIdx=null,piorIdx=null;
+  if(semanasComDados.length>1){
+    const melhor=semanasComDados.reduce((a,b)=>b.roiFat>a.roiFat?b:a);
+    const pior=semanasComDados.reduce((a,b)=>b.roiFat<a.roiFat?b:a);
+    if(melhor.roiFat!==pior.roiFat){melhorIdx=melhor.idx;piorIdx=pior.idx;}
+  }
+
+  let resumoHtml='';
+  if(melhorIdx!==null){
+    resumoHtml=`<div class="kpi-grid" style="margin-bottom:14px">
+      <div class="kpi accent">
+        <div class="kpi-label"><i class="ti ti-trophy" style="font-size:11px"></i> Melhor semana</div>
+        <div class="kpi-val">${melhorIdx+1}ª semana</div>
+        <div class="kpi-sub">ROI ${roiX(todasSemanas[melhorIdx].roiFat)} · ${brl(todasSemanas[melhorIdx].fat)}</div>
+      </div>
+      <div class="kpi danger">
+        <div class="kpi-label"><i class="ti ti-trending-down" style="font-size:11px"></i> Pior semana</div>
+        <div class="kpi-val">${piorIdx+1}ª semana</div>
+        <div class="kpi-sub">ROI ${roiX(todasSemanas[piorIdx].roiFat)} · ${brl(todasSemanas[piorIdx].fat)}</div>
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML=resumoHtml+Array.from({length:4},(_,i)=>{
+    const c=todasSemanas[i],h=c.fat>0||c.inv>0;
+    let badge='';
+    if(h){
+      if(i===melhorIdx) badge=`<span class="pill pill-g"><i class="ti ti-trophy" style="font-size:11px"></i> Melhor ROI</span>`;
+      else if(i===piorIdx) badge=`<span class="pill pill-r"><i class="ti ti-trending-down" style="font-size:11px"></i> Pior ROI</span>`;
+      else badge=`<span class="pill ${c.lucroLiq>=0?'pill-g':'pill-r'}">${c.lucroLiq>=0?'Positivo':'Negativo'}</span>`;
+    }
     return`<div class="card">
     <div class="card-header">
       <div class="card-title"><i class="ti ti-calendar-week"></i>${i+1}ª semana — dias ${ranges[i]}</div>
-      ${h?`<span class="pill ${c.lucroLiq>=0?'pill-g':'pill-r'}">${c.lucroLiq>=0?'Positivo':'Negativo'}</span>`:''}
+      ${badge}
     </div>
     <div class="week-grid" style="margin-bottom:8px">
       <div class="week-mini"><div class="week-mini-label">Faturado</div><div class="week-mini-val">${h?brl(c.fat):'—'}</div></div>
@@ -427,6 +546,186 @@ function renderTotalGastos(){
 
 function addGasto(){gastos.push({nome:'',valor:0});salvar();renderTotal();}
 
+// ── ANÁLISES ─────────────────────────────────────────
+const DIAS_SEMANA=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const ANO_REF=2026;
+
+function diaDaSemana(mes,diaDoMes){
+  // mes: 0-11
+  return new Date(ANO_REF,mes,diaDoMes).getDay(); // 0=domingo...6=sábado
+}
+
+function renderAnalises(){
+  const el=document.getElementById('s-analises');
+  const diasComVenda=dias.filter(d=>d.fat>0);
+
+  if(diasComVenda.length<2){
+    el.innerHTML=`<div class="card"><div class="empty-state"><i class="ti ti-chart-dots"></i>Lance pelo menos 2 dias com faturamento em ${MESES[mesAtual]} pra ver as análises.</div></div>`;
+    return;
+  }
+
+  // ── Ranking de dias do mês (melhores/piores) ──
+  const diasOrdenados=[...diasComVenda].sort((a,b)=>b.fat-a.fat);
+  const top5=diasOrdenados.slice(0,5);
+  const bottom5=[...diasOrdenados].reverse().slice(0,5);
+
+  // ── Agrupamento por dia da semana ──
+  const porSemana={}; // 0-6 => {totalFat,totalInv,count,totalVendas,totalLeads}
+  for(let i=0;i<7;i++) porSemana[i]={totalFat:0,totalInv:0,count:0,totalVendas:0,totalLeads:0};
+  diasComVenda.forEach(d=>{
+    const dow=diaDaSemana(mesAtual,d.dia);
+    porSemana[dow].totalFat+=d.fat;
+    porSemana[dow].totalInv+=d.inv;
+    porSemana[dow].count+=1;
+    porSemana[dow].totalVendas+=d.vendas;
+    porSemana[dow].totalLeads+=d.leads;
+  });
+  const semanaArr=Object.keys(porSemana).map(k=>({
+    dow:parseInt(k),nome:DIAS_SEMANA[k],
+    mediaFat:porSemana[k].count>0?porSemana[k].totalFat/porSemana[k].count:0,
+    count:porSemana[k].count,
+    totalVendas:porSemana[k].totalVendas
+  })).filter(s=>s.count>0);
+  const semanaOrdenada=[...semanaArr].sort((a,b)=>b.mediaFat-a.mediaFat);
+  const melhorDiaSemana=semanaOrdenada[0];
+  const piorDiaSemana=semanaOrdenada[semanaOrdenada.length-1];
+
+  // ── Tendência: primeira metade vs segunda metade do mês ──
+  const diasOrdPorData=[...diasComVenda].sort((a,b)=>a.dia-b.dia);
+  const meio=Math.ceil(diasOrdPorData.length/2);
+  const primeiraMetade=diasOrdPorData.slice(0,meio);
+  const segundaMetade=diasOrdPorData.slice(meio);
+
+  function mediaROI(arr){
+    const fat=arr.reduce((a,d)=>a+d.fat,0),inv=arr.reduce((a,d)=>a+d.inv,0)*(1+getTax());
+    return inv>0?fat/inv:null;
+  }
+  function mediaCPA(arr){
+    const inv=arr.reduce((a,d)=>a+d.inv,0)*(1+getTax()),vendas=arr.reduce((a,d)=>a+d.vendas,0);
+    return vendas>0?inv/vendas:null;
+  }
+  function mediaCPL(arr){
+    const inv=arr.reduce((a,d)=>a+d.inv,0)*(1+getTax()),leads=arr.reduce((a,d)=>a+d.leads,0);
+    return leads>0?inv/leads:null;
+  }
+
+  const roi1=mediaROI(primeiraMetade),roi2=mediaROI(segundaMetade);
+  const cpa1=mediaCPA(primeiraMetade),cpa2=mediaCPA(segundaMetade);
+  const cpl1=mediaCPL(primeiraMetade),cpl2=mediaCPL(segundaMetade);
+
+  function trendInfo(v1,v2,quantoMaiorMelhor){
+    if(v1===null||v2===null||v1===0) return{dir:'flat',pct:0,icon:'ti-minus',cls:'trend-flat',txt:'Sem dados suficientes'};
+    const variacao=((v2-v1)/v1)*100;
+    const subiu=variacao>0.5,desceu=variacao<-0.5;
+    let bom;
+    if(subiu) bom=quantoMaiorMelhor;
+    else if(desceu) bom=!quantoMaiorMelhor;
+    else bom=null;
+    return{
+      dir:subiu?'up':desceu?'down':'flat',
+      pct:Math.abs(variacao),
+      icon:subiu?'ti-trending-up':desceu?'ti-trending-down':'ti-minus',
+      cls:bom===null?'trend-flat':(bom?'trend-up':'trend-down'),
+      txt:subiu?`Subiu ${Math.abs(variacao).toFixed(1)}%`:desceu?`Caiu ${Math.abs(variacao).toFixed(1)}%`:'Estável'
+    };
+  }
+
+  const trendROI=trendInfo(roi1,roi2,true);   // ROI maior é melhor
+  const trendCPA=trendInfo(cpa1,cpa2,false);  // CPA maior é pior
+  const trendCPL=trendInfo(cpl1,cpl2,false);  // CPL maior é pior
+
+  function rankRow(d,pos,isTop){
+    const dow=DIAS_SEMANA[diaDaSemana(mesAtual,d.dia)].slice(0,3);
+    return`<div class="rank-row">
+      <div class="rank-pos ${isTop?'g':'r'}">${pos}</div>
+      <div class="rank-label">Dia ${d.dia} <span style="color:var(--text3)">(${dow})</span></div>
+      <div class="rank-val ${isTop?'c-g':'c-r'}">${brl(d.fat)}</div>
+    </div>`;
+  }
+
+  el.innerHTML=`
+  <div class="section-label">Tendências do mês — ${MESES[mesAtual]}</div>
+  <div class="kpi-grid" style="margin-bottom:14px">
+    <div class="kpi">
+      <div class="kpi-label">ROI</div>
+      <div class="trend-badge ${trendROI.cls}"><i class="ti ${trendROI.icon}"></i> ${trendROI.txt}</div>
+      <div class="kpi-sub">1ª metade ${roi1!==null?roiX(roi1):'—'} → 2ª metade ${roi2!==null?roiX(roi2):'—'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">CPA — custo por venda</div>
+      <div class="trend-badge ${trendCPA.cls}"><i class="ti ${trendCPA.icon}"></i> ${trendCPA.txt}</div>
+      <div class="kpi-sub">1ª metade ${cpa1!==null?brl(cpa1):'—'} → 2ª metade ${cpa2!==null?brl(cpa2):'—'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Custo por lead</div>
+      <div class="trend-badge ${trendCPL.cls}"><i class="ti ${trendCPL.icon}"></i> ${trendCPL.txt}</div>
+      <div class="kpi-sub">1ª metade ${cpl1!==null?brl(cpl1):'—'} → 2ª metade ${cpl2!==null?brl(cpl2):'—'}</div>
+    </div>
+  </div>
+
+  <div class="section-label">Dias da semana que mais vendem</div>
+  <div class="card">
+    <div class="card-header"><div class="card-title"><i class="ti ti-calendar-stats"></i>Média de faturamento por dia da semana</div></div>
+    <div class="rank-list">
+      ${semanaOrdenada.map((s,i)=>{
+        const isTop=i===0,isBottom=i===semanaOrdenada.length-1&&semanaOrdenada.length>1;
+        const barPct=semanaOrdenada[0].mediaFat>0?(s.mediaFat/semanaOrdenada[0].mediaFat)*100:0;
+        return`<div class="rank-row">
+          <div class="rank-pos ${isTop?'g':isBottom?'r':''}" style="${!isTop&&!isBottom?'background:var(--bg);color:var(--text2)':''}">${i+1}</div>
+          <div class="rank-label">${s.nome} ${isTop?'<i class="ti ti-trophy" style="font-size:12px;color:var(--green)"></i>':''}${isBottom?'<i class="ti ti-trending-down" style="font-size:12px;color:var(--red)"></i>':''}
+            <div class="prog-wrap" style="width:120px;display:inline-block;vertical-align:middle;margin-left:8px">
+              <div class="prog-fill" style="width:${barPct}%;background:${isTop?'#639922':isBottom?'#E24B4A':'#888'}"></div>
+            </div>
+          </div>
+          <div class="rank-val ${isTop?'c-g':isBottom?'c-r':''}">${brl(s.mediaFat)} <span style="color:var(--text3);font-weight:400">(${s.count}x)</span></div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <div class="week-grid" style="margin-top:14px">
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header"><div class="card-title"><i class="ti ti-trophy" style="color:var(--green)"></i>Top 5 — melhores dias do mês</div></div>
+      <div class="rank-list">${top5.map((d,i)=>rankRow(d,i+1,true)).join('')}</div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header"><div class="card-title"><i class="ti ti-trending-down" style="color:var(--red)"></i>Top 5 — piores dias do mês</div></div>
+      <div class="rank-list">${bottom5.map((d,i)=>rankRow(d,i+1,false)).join('')}</div>
+    </div>
+  </div>
+
+  <div class="section-label" style="margin-top:14px">Evolução diária — ROI e CPA</div>
+  <div class="card">
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)"><span style="width:12px;height:2px;border-top:2px solid #185FA5;display:inline-block"></span>ROI</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)"><span style="width:12px;height:2px;border-top:2px dashed #E24B4A;display:inline-block"></span>CPA (R$)</span>
+    </div>
+    <div class="chart-wrap"><canvas id="analiseChart"></canvas></div>
+  </div>`;
+
+  // Gráfico de evolução
+  if(window.analiseChartInst){window.analiseChartInst.destroy();window.analiseChartInst=null;}
+  setTimeout(()=>{
+    const ctx=document.getElementById('analiseChart');if(!ctx)return;
+    const labels=diasOrdPorData.map(d=>'Dia '+d.dia);
+    const roiData=diasOrdPorData.map(d=>{const invT=d.inv*(1+getTax());return invT>0?d.fat/invT:null;});
+    const cpaData=diasOrdPorData.map(d=>{const invT=d.inv*(1+getTax());return d.vendas>0?invT/d.vendas:null;});
+    window.analiseChartInst=new Chart(ctx,{
+      type:'line',
+      data:{labels,datasets:[
+        {label:'ROI',data:roiData,borderColor:'#185FA5',backgroundColor:'transparent',tension:.3,pointRadius:3,yAxisID:'y'},
+        {label:'CPA',data:cpaData,borderColor:'#E24B4A',backgroundColor:'transparent',borderDash:[4,3],tension:.3,pointRadius:3,yAxisID:'y1'}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+        scales:{
+          y:{position:'left',ticks:{callback:v=>v.toFixed(1)+'x',font:{size:10}},grid:{color:'rgba(128,128,128,.1)'}},
+          y1:{position:'right',ticks:{callback:v=>'R$'+Math.round(v),font:{size:10}},grid:{display:false}},
+          x:{ticks:{font:{size:10}},grid:{display:false}}
+        }}
+    });
+  },80);
+}
+
 // ── SIMULAÇÃO ────────────────────────────────────────
 function renderSimulacao(){
   const el=document.getElementById('s-simulacao');
@@ -435,18 +734,18 @@ function renderSimulacao(){
   <div class="card">
     <div class="card-header"><div class="card-title"><i class="ti ti-calculator"></i>Parâmetros da simulação</div></div>
     <div class="sim-input-row-3">
-      <div class="sim-input"><div class="sim-input-label">Ticket médio (R$)</div><input type="number" id="simTicket" min="0" step="10" value="190" oninput="calcSim()"></div>
-      <div class="sim-input"><div class="sim-input-label">Quantidade de vendas/dia</div><input type="number" id="simVendas" min="0" step="1" value="14" oninput="calcSim()"></div>
-      <div class="sim-input"><div class="sim-input-label">CPA — custo por venda (R$)</div><input type="number" id="simCPA" min="0" step="1" value="60" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Ticket médio (R$)</div><input type="number" id="simTicket" min="0" step="10" value="${simState.ticket}" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Quantidade de vendas/dia</div><input type="number" id="simVendas" min="0" step="1" value="${simState.vendas}" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">CPA — custo por venda (R$)</div><input type="number" id="simCPA" min="0" step="1" value="${simState.cpa}" oninput="calcSim()"><div style="font-size:10px;color:var(--text3);margin-top:4px;text-align:center">Já considere o imposto de ${cfg.taxPct}% no valor</div></div>
     </div>
     <div class="sim-input-row">
-      <div class="sim-input"><div class="sim-input-label">Custo por conversa (R$)</div><input type="number" id="simCPC" min="0" step="1" value="4" oninput="calcSim()"></div>
-      <div class="sim-input"><div class="sim-input-label">Dias no mês</div><input type="number" id="simDiasMes" min="1" max="31" value="30" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Custo por conversa (R$)</div><input type="number" id="simCPC" min="0" step="1" value="${simState.cpc}" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Dias no mês</div><input type="number" id="simDiasMes" min="1" max="31" value="${simState.diasMes}" oninput="calcSim()"></div>
     </div>
     <div class="divider"></div>
     <div class="sim-input-row">
-      <div class="sim-input"><div class="sim-input-label">Nº de atendentes</div><input type="number" id="simAtend" min="1" step="1" value="1" oninput="calcSim()"></div>
-      <div class="sim-input"><div class="sim-input-label">Tx. de conversão estimada (%)</div><input type="number" id="simTxConv" min="0" step="0.1" value="10" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Nº de atendentes</div><input type="number" id="simAtend" min="1" step="1" value="${simState.atend}" oninput="calcSim()"></div>
+      <div class="sim-input"><div class="sim-input-label">Tx. de conversão estimada (%)</div><input type="number" id="simTxConv" min="0" step="0.1" value="${simState.txConv}" oninput="calcSim()"></div>
     </div>
   </div>
   <div id="simResultado"></div>`;
@@ -462,11 +761,16 @@ function calcSim(){
   const nAtend=Math.max(1,num(document.getElementById('simAtend')?.value)||1);
   const txConv=num(document.getElementById('simTxConv')?.value);
 
+  // Salva o estado pra não resetar ao trocar de aba
+  simState={ticket,vendas,cpa,cpc,diasMes:dias_mes,atend:nAtend,txConv};
+  salvar();
+
   const fatDia=ticket*vendas;
   const fatMes=fatDia*dias_mes;
-  const invDia=cpa*vendas;
-  const invMes=invDia*dias_mes;
-  const invMesT=invMes*(1+getTax());
+  // CPA é "custo por venda" já com imposto incluso (mesma lógica da aba Total: invT/vendas)
+  const invDiaT=cpa*vendas;
+  const invMesT=invDiaT*dias_mes;
+  const invMes=invMesT/(1+getTax()); // bruto, sem imposto, só pra exibição
   const frustMes=fatMes*getFrust();
   const lucroMes=fatMes-invMesT;
   const lucroLiqMes=frustMes-invMesT;
@@ -475,9 +779,11 @@ function calcSim(){
   const custoConvDia=leadsNec*cpc;
   const custoConvMes=custoConvDia*dias_mes;
 
-  // comissão por atendente
-  const commPorAtend=frustMes*(cfg.commPct/100);
-  const bonusPorAtend=bonusDia(fatDia)*dias_mes;
+  // As vendas/dia digitadas são o TOTAL da operação — dividido entre os atendentes
+  const fatDiaPorAtend=fatDia/nAtend;
+  const frustMesPorAtend=frustMes/nAtend;
+  const commPorAtend=frustMesPorAtend*(cfg.commPct/100);
+  const bonusPorAtend=bonusDia(fatDiaPorAtend)*dias_mes;
   const salPorAtend=cfg.fixo+commPorAtend+bonusPorAtend;
   const totalAtend=salPorAtend*nAtend;
   const lucroLiqFinal=lucroLiqMes-totalAtend;
@@ -513,10 +819,13 @@ function calcSim(){
 
   <div class="section-label">Custo com atendente${nAtend>1?'s':''}</div>
   <div class="card">
+    ${nAtend>1?`<div style="padding:10px 12px;background:var(--bg2);border-radius:var(--radius);margin-bottom:12px;font-size:12px;color:var(--text2)">
+      <i class="ti ti-users" style="font-size:13px"></i> ${vendas} vendas/dia divididas entre ${nAtend} atendentes = <strong style="color:var(--text)">${(vendas/nAtend).toFixed(1)} vendas/dia por atendente</strong> (${brl(fatDiaPorAtend)}/dia cada)
+    </div>`:''}
     <div class="kpi-grid" style="margin-bottom:10px">
       <div class="kpi"><div class="kpi-label">Fixo por atendente</div><div class="kpi-val">${brl(cfg.fixo)}</div></div>
       <div class="kpi accent"><div class="kpi-label">Comissão por atendente</div><div class="kpi-val">${brl(commPorAtend)}</div><div class="kpi-sub">${cfg.commPct}% sobre ${cfg.frustPct}%</div></div>
-      <div class="kpi warn"><div class="kpi-label">Bônus por atendente</div><div class="kpi-val">${brl(bonusPorAtend)}</div></div>
+      <div class="kpi warn"><div class="kpi-label">Bônus por atendente</div><div class="kpi-val">${brl(bonusPorAtend)}</div><div class="kpi-sub">Acumulado por dia × ${dias_mes}</div></div>
       <div class="kpi"><div class="kpi-label">Salário por atendente</div><div class="kpi-val">${brl(salPorAtend)}</div></div>
     </div>
     <div style="padding:12px;background:var(--red-bg);border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -686,7 +995,7 @@ function updateHeader(){
   const fat=dias.reduce((a,d)=>a+d.fat,0);
   const n=dias.filter(d=>d.fat>0||d.inv>0).length;
   const el=document.getElementById('headerSub');if(!el)return;
-  el.textContent=fat>0?`Faturamento acumulado: ${brl(fat)} · ${n} dia${n!==1?'s':''} lançado${n!==1?'s':''}`:'Mês atual · Nenhum dado lançado';
+  el.textContent=fat>0?`${MESES[mesAtual]} · Faturamento acumulado: ${brl(fat)} · ${n} dia${n!==1?'s':''} lançado${n!==1?'s':''}`:`${MESES[mesAtual]} · Nenhum dado lançado`;
 }
 
 function upd(i,f,v){dias[i][f]=num(v);salvar();refreshAll();}
@@ -697,19 +1006,29 @@ function show(name,btn){
   document.getElementById('s-'+name).classList.add('active');
   btn.classList.add('active');
   if(name==='total')renderTotal();
+  if(name==='analises')renderAnalises();
   if(name==='comissao')renderComissao();
-  if(name==='simulacao')renderSimulacao();
+  if(name==='simulacao'){
+    // só recria o formulário se ainda não existir, pra não perder o que o usuário digitou
+    if(!document.getElementById('simTicket')) renderSimulacao();
+    else calcSim();
+  }
 }
 
 function refreshAll(){
   const active=document.querySelector('.section.active')?.id;
   renderDias();renderSemanas();renderConfig();
   if(active==='s-total')renderTotal();
+  if(active==='s-analises')renderAnalises();
   if(active==='s-comissao')renderComissao();
-  if(active==='s-simulacao')renderSimulacao();
+  if(active==='s-simulacao'){
+    if(!document.getElementById('simTicket')) renderSimulacao();
+    else calcSim();
+  }
   updateHeader();
 }
 
+popularSeletorMeses();
 renderDias();renderSemanas();renderConfig();
 </script>
 </body>
