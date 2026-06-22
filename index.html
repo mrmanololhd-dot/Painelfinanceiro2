@@ -228,7 +228,7 @@ let dadosMeses={}; // {0: [...31 dias], 1: [...], ...}
 for(let i=0;i<12;i++) dadosMeses[i]=novoMesVazio();
 let gastosPorMes={};
 for(let i=0;i<12;i++) gastosPorMes[i]=[];
-let simState={ticket:190,vendas:14,cpa:60,cpc:4,diasMes:30,atend:1,txConv:10};
+let simState={ticket:190,vendas:14,cpa:60,cpc:4,diasMes:30,atend:1,txConv:10,comissaoTicket:0};
 let chartInst=null;
 
 carregar();
@@ -747,6 +747,10 @@ function renderSimulacao(){
       <div class="sim-input"><div class="sim-input-label">Nº de atendentes</div><input type="number" id="simAtend" min="1" step="1" value="${simState.atend}" oninput="calcSim()"></div>
       <div class="sim-input"><div class="sim-input-label">Tx. de conversão estimada (%)</div><input type="number" id="simTxConv" min="0" step="0.1" value="${simState.txConv}" oninput="calcSim()"></div>
     </div>
+    <div class="divider"></div>
+    <div class="sim-input-row">
+      <div class="sim-input"><div class="sim-input-label">Minha comissão sobre o ticket (%)</div><input type="number" id="simComissaoTicket" min="0" step="1" value="${simState.comissaoTicket||0}" oninput="calcSim()"><div style="font-size:10px;color:var(--text3);margin-top:4px;text-align:center">Quanto você recebe por venda — deixe 0 se não aplicável</div></div>
+    </div>
   </div>
   <div id="simResultado"></div>`;
   calcSim();
@@ -760,9 +764,10 @@ function calcSim(){
   const dias_mes=num(document.getElementById('simDiasMes')?.value)||30;
   const nAtend=Math.max(1,num(document.getElementById('simAtend')?.value)||1);
   const txConv=num(document.getElementById('simTxConv')?.value);
+  const comissaoTicketPct=num(document.getElementById('simComissaoTicket')?.value);
 
   // Salva o estado pra não resetar ao trocar de aba
-  simState={ticket,vendas,cpa,cpc,diasMes:dias_mes,atend:nAtend,txConv};
+  simState={ticket,vendas,cpa,cpc,diasMes:dias_mes,atend:nAtend,txConv,comissaoTicket:comissaoTicketPct};
   salvar();
 
   const fatDia=ticket*vendas;
@@ -772,9 +777,18 @@ function calcSim(){
   const invMesT=invDiaT*dias_mes;
   const invMes=invMesT/(1+getTax()); // bruto, sem imposto, só pra exibição
   const frustMes=fatMes*getFrust();
-  const lucroMes=fatMes-invMesT;
-  const lucroLiqMes=frustMes-invMesT;
   const roiMes=invMesT>0?fatMes/invMesT:0;
+
+  // Comissão sobre o ticket calculada antes do resultado projetado
+  const comissaoPorVenda=ticket*(comissaoTicketPct/100);
+  const comissaoTicketDia=comissaoPorVenda*vendas;
+  const comissaoTicketMes=comissaoTicketDia*dias_mes;
+
+  // Resultado projetado inclui comissão sobre ticket como receita adicional
+  const receitaTotalMes=fatMes+comissaoTicketMes;
+  const receitaTotalDia=fatDia+comissaoTicketDia;
+  const lucroMes=receitaTotalMes-invMesT;
+  const lucroLiqMes=(frustMes+comissaoTicketMes)-invMesT;
   const leadsNec=txConv>0?(vendas/(txConv/100)):0;
   const custoConvDia=leadsNec*cpc;
   const custoConvMes=custoConvDia*dias_mes;
@@ -794,8 +808,9 @@ function calcSim(){
   el.innerHTML=`
   <div class="section-label">Resultado projetado — mês</div>
   <div class="total-block">
+    ${comissaoTicketMes>0?`<div style="padding:9px 12px;background:var(--teal-bg);border:0.5px solid var(--teal-border);border-radius:var(--radius);margin-bottom:10px;font-size:12px;color:var(--teal);display:flex;align-items:center;gap:8px"><i class="ti ti-receipt-2" style="font-size:14px"></i><span>Comissão sobre ticket inclusa: <strong>+${brl(comissaoTicketMes)}/mês</strong> (${brl(comissaoTicketDia)}/dia × ${dias_mes} dias)</span></div>`:''}
     <div class="kpi-grid" style="margin-bottom:10px">
-      <div class="kpi accent"><div class="kpi-label">Faturamento</div><div class="kpi-val">${brl(fatMes)}</div><div class="kpi-sub">${brl(fatDia)}/dia</div></div>
+      <div class="kpi accent"><div class="kpi-label">Receita total</div><div class="kpi-val">${brl(receitaTotalMes)}</div><div class="kpi-sub">${comissaoTicketMes>0?'Fat. '+brl(fatMes)+' + com. '+brl(comissaoTicketMes):brl(receitaTotalDia)+'/dia'}</div></div>
       <div class="kpi warn"><div class="kpi-label">Investimento +${cfg.taxPct}%</div><div class="kpi-val">${brl(invMesT)}</div><div class="kpi-sub">Bruto: ${brl(invMes)}</div></div>
       <div class="kpi ${lucroMes>=0?'accent':'danger'}"><div class="kpi-label">Lucro 100%</div><div class="kpi-val">${brl(lucroMes)}</div></div>
       <div class="kpi"><div class="kpi-label">Frustração ${cfg.frustPct}%</div><div class="kpi-val" style="color:var(--amber)">${brl(frustMes)}</div></div>
@@ -842,6 +857,17 @@ function calcSim(){
         <div style="font-size:11px;color:var(--green);margin-top:2px">Lucro líquido − atendentes − outros gastos</div>
       </div>
       <span style="font-size:22px;font-weight:700;color:var(--green)">${brl(lucroReal)}</span>
+    </div>
+  </div>
+
+  <div class="section-label">Sua comissão sobre o ticket</div>
+  <div class="card">
+    ${comissaoTicketPct<=0?`<div style="padding:10px 12px;background:var(--bg2);border-radius:var(--radius);margin-bottom:10px;font-size:12px;color:var(--text2)"><i class="ti ti-info-circle" style="font-size:13px"></i> Configure a % de comissão no campo acima para ver seus ganhos por venda.</div>`:''}
+    <div class="kpi-grid" style="margin-bottom:10px">
+      <div class="kpi"><div class="kpi-label">% de comissão</div><div class="kpi-val">${comissaoTicketPct}%</div><div class="kpi-sub">Sobre ${brl(ticket)} de ticket</div></div>
+      <div class="kpi ${comissaoTicketPct>0?'accent':''}"><div class="kpi-label">Por venda</div><div class="kpi-val">${comissaoTicketPct>0?brl(comissaoPorVenda):'—'}</div></div>
+      <div class="kpi ${comissaoTicketPct>0?'accent':''}"><div class="kpi-label">Por dia</div><div class="kpi-val">${comissaoTicketPct>0?brl(comissaoTicketDia):'—'}</div><div class="kpi-sub">${comissaoTicketPct>0?vendas+' vendas/dia':''}</div></div>
+      <div class="kpi ${comissaoTicketPct>0?'accent':''}"><div class="kpi-label">No mês</div><div class="kpi-val">${comissaoTicketPct>0?brl(comissaoTicketMes):'—'}</div><div class="kpi-sub">${comissaoTicketPct>0?dias_mes+' dias':''}</div></div>
     </div>
   </div>`;
 }
