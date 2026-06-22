@@ -811,12 +811,12 @@ function calcSim(){
     ${comissaoTicketMes>0?`<div style="padding:9px 12px;background:var(--teal-bg);border:0.5px solid var(--teal-border);border-radius:var(--radius);margin-bottom:10px;font-size:12px;color:var(--teal);display:flex;align-items:center;gap:8px"><i class="ti ti-receipt-2" style="font-size:14px"></i><span>Comissão sobre ticket inclusa: <strong>+${brl(comissaoTicketMes)}/mês</strong> (${brl(comissaoTicketDia)}/dia × ${dias_mes} dias)</span></div>`:''}
     <div class="kpi-grid" style="margin-bottom:10px">
       <div class="kpi accent"><div class="kpi-label">Receita total</div><div class="kpi-val">${brl(receitaTotalMes)}</div><div class="kpi-sub">${comissaoTicketMes>0?'Fat. '+brl(fatMes)+' + com. '+brl(comissaoTicketMes):brl(receitaTotalDia)+'/dia'}</div></div>
-      <div class="kpi warn"><div class="kpi-label">Investimento +${cfg.taxPct}%</div><div class="kpi-val">${brl(invMesT)}</div><div class="kpi-sub">Bruto: ${brl(invMes)}</div></div>
-      <div class="kpi ${lucroMes>=0?'accent':'danger'}"><div class="kpi-label">Lucro 100%</div><div class="kpi-val">${brl(lucroMes)}</div></div>
-      <div class="kpi"><div class="kpi-label">Frustração ${cfg.frustPct}%</div><div class="kpi-val" style="color:var(--amber)">${brl(frustMes)}</div></div>
+      <div class="kpi warn"><div class="kpi-label">Investimento +${cfg.taxPct}%</div><div class="kpi-val">${brl(invMesT)}</div><div class="kpi-sub">Bruto: ${brl(invMes)} · ${brl(invDiaT)}/dia</div></div>
+      <div class="kpi ${lucroMes>=0?'accent':'danger'}"><div class="kpi-label">Lucro 100%</div><div class="kpi-val">${brl(lucroMes)}</div><div class="kpi-sub">${brl(lucroMes/dias_mes)}/dia</div></div>
+      <div class="kpi"><div class="kpi-label">Frustração ${cfg.frustPct}%</div><div class="kpi-val" style="color:var(--amber)">${brl(frustMes)}</div><div class="kpi-sub">${brl(frustMes/dias_mes)}/dia</div></div>
     </div>
     <div class="kpi-grid">
-      <div class="kpi ${lucroLiqMes>=0?'accent':'danger'}"><div class="kpi-label">Lucro líquido</div><div class="kpi-val">${brl(lucroLiqMes)}</div></div>
+      <div class="kpi ${lucroLiqMes>=0?'accent':'danger'}"><div class="kpi-label">Lucro líquido</div><div class="kpi-val">${brl(lucroLiqMes)}</div><div class="kpi-sub">${brl(lucroLiqMes/dias_mes)}/dia</div></div>
       <div class="kpi"><div class="kpi-label">ROI</div><div class="kpi-val">${roiX(roiMes)}</div></div>
       <div class="kpi info"><div class="kpi-label">Ticket médio</div><div class="kpi-val">${brl(ticket)}</div></div>
       <div class="kpi info"><div class="kpi-label">Total vendas</div><div class="kpi-val">${(vendas*dias_mes).toFixed(0)}</div></div>
